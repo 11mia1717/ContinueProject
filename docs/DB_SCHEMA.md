@@ -1,133 +1,121 @@
-# Database Schema Specification
-> 2026.01.30 Current State
+# 데이터베이스 명세서 (Database Schema)
+> 2026.01.30 기준 (최종 현행화 완료)
 
-This document defines the database schemas for the **Continue Bank** ecosystem, including the Entrusting Client, SSAP (Trustee), Call Center, and Issuer services.
-
----
-
-## 1. Entrusting Client DB (`entrusting_db`)
-**Port**: 3306 (MySQL)
-**Purpose**: Stores customer data, accounts, and compliance logs for Continue Bank.
-
-### `site_users` Table
-Stores user profile and consent information.
-| Field | Type | Attributes | Description | Compliance Note |
-| :--- | :--- | :--- | :--- | :--- |
-| `id` | BIGINT | PK, Auto Inc | User ID | |
-| `username` | VARCHAR | Unique | Login ID | |
-| `password` | VARCHAR | | Encrypted Password | |
-| `name` | VARCHAR(500) | | **Encrypted** (AES-256) Name | 2026 Data Protection |
-| `phone_number` | VARCHAR(500) | | **Encrypted** (AES-256) Phone | 2026 Data Protection |
-| `ci` | VARCHAR(120) | Unique | Connecting Information | For User Dup Check |
-| `di` | VARCHAR(90) | | Duplication Info | |
-| `is_verified` | BOOLEAN | | Identity Verified Status | |
-| `terms_agreed` | BOOLEAN | | Essential Terms Agreement | |
-| `privacy_agreed` | BOOLEAN | | Personal Info Agreement | |
-| `unique_id_agreed` | BOOLEAN | | Unique ID Processing | Required |
-| `credit_info_agreed` | BOOLEAN | | Credit Info Inquiry | Required |
-| `carrier_auth_agreed` | BOOLEAN | | Carrier Auth Service | Required |
-| `electronic_finance_agreed` | BOOLEAN | | Elec. Finance Service | Required |
-| `monitoring_agreed` | BOOLEAN | | Finance Monitoring/AML | Required |
-| `ssap_provision_agreed` | BOOLEAN | | 3rd Party (TM) Provision | Starbucks Event Link |
-| `third_party_provision_agreed` | BOOLEAN | | 3rd Party (General) | Optional |
-| `marketing_agreed`| BOOLEAN | | Marketing Consent | Optional |
-| `marketing_sms` | BOOLEAN | | SMS Marketing | |
-| `marketing_email` | BOOLEAN | | Email Marketing | |
-| `marketing_push` | BOOLEAN | | Push Marketing | |
-| `marketing_personal_agreed` | BOOLEAN | | Personal Marketing | Optional |
-| `privacy_agreed_at`| DATETIME | | Agreement Timestamp | |
-| `terms_agreed_at` | DATETIME | | Terms Agreement Time | |
-| `data_expire_at` | DATETIME | | Retention Expiry Date | Right to Erasure |
-| `third_party_retention_until` | DATETIME | | 3rd Party Retention Expiry| 3-Month Limit (TM) |
-
-### `account` Table
-Stores banking account information.
-| Field | Type | Attributes | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | BIGINT | PK, Auto Inc | Account ID |
-| `user_id` | BIGINT | FK | Owner User ID |
-| `account_number` | VARCHAR | Unique | Account Number |
-| `balance` | DECIMAL | | Current Balance |
-| `account_type` | VARCHAR | | Type (CHECKING, SAVINGS) |
-
-### `access_log` Table
-Stores audit logs for all data access events.
-| Field | Type | Attributes | Description | Compliance Note |
-| :--- | :--- | :--- | :--- | :--- |
-| `id` | BIGINT | PK, Auto Inc | Log ID | |
-| `user_id` | BIGINT | | Target User ID | |
-| `accessor_type` | VARCHAR | | Type (SELF, ADMIN, TM_AGENT)| |
-| `accessor_id` | VARCHAR | | Accessor Identifier | |
-| `action` | VARCHAR | | Action (VIEW, UPDATE) | |
-| `details` | TEXT | | Activity Details | |
-| `accessed_at` | DATETIME | | Access Timestamp | Immutable Log |
+본 문서는 **Continue Bank** 생태계(위탁사, 수탁사, 콜센터, 카드 발급사)의 데이터베이스 스키마를 정의합니다.
 
 ---
 
-## 2. SSAP (Trustee) DB (`trustee_db`)
-**Port**: 3307 (MySQL)
-**Purpose**: Manages ephemeral identity verification tokens and virtual carrier data.
+## 1. 위탁사 DB (`entrusting_db`)
+**포트**: 3306 (MySQL)
+**용도**: 고객 프로필, 계좌 정보, 컴플라이언스(약관 동의) 및 접근 로그 보관
 
-### `auth_token` Table
-Stores temporary authentication requests (TTL: 3 minutes).
-| Field | Type | Attributes | Description | Compliance Note |
+### `site_users` 테이블
+사용자 프로필 및 각종 약관 동의 상태를 관리합니다.
+| 컬럼명 | 타입 | 속성 | 설명 | 보안/컴플라이언스 |
 | :--- | :--- | :--- | :--- | :--- |
-| `token_id` | UUID | PK | Unique Token ID (JTI) | |
-| `auth_request_id` | VARCHAR | | Correlation ID | |
-| `name` | VARCHAR(500) | | **Encrypted** (AES-256) | |
-| `client_data` | VARCHAR(500) | | **Encrypted** Phone | |
-| `otp` | VARCHAR(100) | | Hashed OTP | |
-| `ci` | VARCHAR(120) | | Generated CI | |
-| `di` | VARCHAR(90) | | Generated DI | |
-| `status` | VARCHAR | | PENDING, VERIFIED, FAILED | |
-| `created_at` | DATETIME | | Creation Time | Auto-delete after 3m |
+| `id` | BIGINT | PK, Auto Inc | 고유 사용자 ID | |
+| `username` | VARCHAR | Unique | 로그인 아이디 | |
+| `password` | VARCHAR | | 암호화된 비밀번호 | BCrypt 해시 |
+| `name` | VARCHAR(500) | | **암호화**(AES-256) 성명 | 2026 데이터 보호 규정 |
+| `phone_number` | VARCHAR(500) | | **암호화**(AES-256) 연락처 | 2026 데이터 보호 규정 |
+| `ci` | VARCHAR(120) | Unique | 연계정보 (Connecting Info) | 중복 가입 방지용 |
+| `di` | VARCHAR(90) | | 중복가입확인정보 | 사이트 식별용 |
+| `is_verified` | BOOLEAN | | 본인인증 완료 여부 | 실명 확인 상태 |
+| `terms_agreed` | BOOLEAN | | [필수] 이용약관 동의 | |
+| `privacy_agreed` | BOOLEAN | | [필수] 개인정보 수집 이용 동의 | |
+| `unique_id_agreed` | BOOLEAN | | [필수] 고유식별정보 처리 동의 | 필수 항목 |
+| `credit_info_agreed` | BOOLEAN | | [필수] 신용정보 조회·제공 동의 | 필수 항목 |
+| `carrier_auth_agreed` | BOOLEAN | | [필수] 통신사 본인확인 동의 | 필수 항목 |
+| `electronic_finance_agreed` | BOOLEAN | | [필수] 전자금융거래 기본약관 | 필수 항목 |
+| `monitoring_agreed` | BOOLEAN | | [필수] 금융거래 모니터링/AML | 필수 항목 |
+| `ssap_provision_agreed` | BOOLEAN | | [선택] 제휴 TM 센터 정보 제공 | 스타벅스 이벤트 연동 |
+| `third_party_provision_agreed` | BOOLEAN | | [선택] 제3자 정보 제공 동의 | 위탁 업무용 |
+| `marketing_agreed`| BOOLEAN | | [선택] 마케팅 수신 전체 동의 | 선택 항목 |
+| `marketing_sms` | BOOLEAN | | SMS 마케팅 수신 여부 | |
+| `marketing_email` | BOOLEAN | | 이메일 마케팅 수신 여부 | |
+| `marketing_push` | BOOLEAN | | 푸시 마케팅 수신 여부 | |
+| `marketing_personal_agreed` | BOOLEAN | | 개인맞춤형 상품 추천 동의 | 선택 항목 |
+| `privacy_agreed_at`| DATETIME | | 개인정보 수집 동의 일시 | |
+| `terms_agreed_at` | DATETIME | | 서비스 이용약관 동의 일시 | |
+| `data_expire_at` | DATETIME | | 데이터 보관 만료일 | 잊혀질 권리 (5년) |
+| `third_party_retention_until` | DATETIME | | 제3자 제공 정보 보관 기한| 콜센터 3개월 제한 |
+
+### `account` 테이블
+은행 계좌 정보를 보관합니다.
+| 컬럼명 | 타입 | 속성 | 설명 |
+| :--- | :--- | :--- | :--- |
+| `id` | BIGINT | PK, Auto Inc | 계좌 ID |
+| `user_id` | BIGINT | FK | 소유자 User ID (외래키) |
+| `account_number` | VARCHAR | Unique | 계좌번호 (하이픈 포함) |
+| `balance` | DECIMAL | | 현재 잔액 |
+| `account_type` | VARCHAR | | 계좌 종류 (입출금, 예적금) |
+
+### `access_log` 테이블
+모든 개인정보 접근 및 수정 이력을 기록합니다.
+| 컬럼명 | 타입 | 속성 | 설명 | 비고 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | BIGINT | PK, Auto Inc | 로그 고유 ID | |
+| `user_id` | BIGINT | | 조회된 대상 사용자 ID | |
+| `accessor_type` | VARCHAR | | 접근 주체 (SELF, ADMIN, TM_AGENT)| |
+| `accessor_id` | VARCHAR | | 접근한 상세 ID (로그인아이디 등) | |
+| `action` | VARCHAR | | 작업 종류 (조회, 수정, 삭제) | |
+| `details` | TEXT | | 상세 작업 내용 | |
+| `accessed_at` | DATETIME | | 접근 일시 | 불변 로그 |
 
 ---
 
-## 3. Call Center DB (`callcenter_db`)
-**Port**: 3308 (MySQL)
-**Purpose**: Stores consultation results and audit logs (Stateless for customer PII).
+## 2. 수탁사(SSAP) DB (`trustee_db`)
+**포트**: 3307 (MySQL)
+**용도**: 휘발성 본인인증 토큰 및 가상 통신사 가입자 정보 관리
 
-### `call_results` Table
-Stores outcomes of TM consultations.
-| Field | Type | Attributes | Description | Compliance Note |
+### `auth_token` 테이블
+임시 본인인증 세션을 관리합니다 (TTL 3분 적용).
+| 컬럼명 | 타입 | 속성 | 설명 | 보안 비고 |
 | :--- | :--- | :--- | :--- | :--- |
-| `id` | BIGINT | PK, Auto Inc | Result ID | |
-| `agent_id` | VARCHAR | | Agent ID | |
-| `target_id` | VARCHAR | | Reference ID (No PII) | Anonymized Ref |
-| `masked_name` | VARCHAR | | Masked Name (Hong*Dong)| Minimized Data |
-| `purpose` | VARCHAR | | Call Purpose | |
-| `result` | VARCHAR | | Outcome (SUCCESS, FAIL) | |
-| `recording_agreed`| BOOLEAN | | Recording Consent | |
-| `retention_until` | DATETIME | | Retention Limit (3 Months) | Auto-Deletion |
-
-### `audit_log` Table
-Tracks agent actions within the Call Center portal.
-| Field | Type | Attributes | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | BIGINT | PK | Log ID |
-| `agent_id` | VARCHAR | | Agent ID |
-| `action` | VARCHAR | | Action (SEARCH, VIEW) |
-| `target` | VARCHAR | | Target (Masked) |
-| `timestamp` | DATETIME | | Event Time |
+| `token_id` | UUID | PK | 인증 세션 고유 키 (tokenId) | |
+| `auth_request_id` | VARCHAR | | 위탁사 요청 식별자 | |
+| `name` | VARCHAR(500) | | **암호화**(AES-256) 성명 | |
+| `client_data` | VARCHAR(500) | | **암호화**(AES-256) 연락처 | |
+| `otp` | VARCHAR(100) | | 발송된 OTP 번호 | 6자리 난수 |
+| `ci` | VARCHAR(120) | | 생성된 연계정보 | |
+| `di` | VARCHAR(90) | | 생성된 중복가입확인정보 | |
+| `status` | VARCHAR | | 진행 상태 (PENDING, COMPLETED, USED) | |
+| `created_at` | DATETIME | | 세션 생성 시간 | 3분 후 자동 파기 대상 |
 
 ---
 
-## 4. Issuer DB (`issuer_db`) (In-Memory)
-**Port**: 8081 (H2 Console)
-**Purpose**: Simulates legacy Card Issuer responses.
+## 3. 콜센터(TM) DB (`callcenter_db`)
+**포트**: 3308 (MySQL)
+**용도**: 상담 결과 및 상담원 활동 로그 보관 (개인정보는 조회만 하고 저장하지 않음)
 
-### `cards` Table
-| Field | Type | Attributes | Description |
-| :--- | :--- | :--- | :--- |
-| `card_id` | VARCHAR | PK | Unique Card ID |
-| `card_number` | VARCHAR | | Masked Card Number |
-| `cvc` | VARCHAR | | CVC Code |
-| `status` | VARCHAR | | NORMAL, LOST, STOPPED |
+### `call_results` 테이블
+아웃바운드 상담 결과를 보관합니다.
+| 컬럼명 | 타입 | 속성 | 설명 | 보안 비고 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | BIGINT | PK, Auto Inc | 상담 결과 ID | |
+| `agent_id` | VARCHAR | | 상담원 로그인 ID | |
+| `target_id` | VARCHAR | | 위탁사 고객 참조 ID (No PII) | 비식별 참조 키 |
+| `masked_name` | VARCHAR | | 마스킹된 성명 (홍*동) | 최소 수립 원칙 |
+| `purpose` | VARCHAR | | 상담 목적 (상품 안내 등) | |
+| `result` | VARCHAR | | 상담 결과 (성공, 부재, 거절) | |
+| `recording_agreed`| BOOLEAN | | 음성 녹취 동의 여부 | |
+| `retention_until` | DATETIME | | 기록 보관 기한 | 3개월 후 자동 삭제 |
 
-### `customers` Table
-| Field | Type | Attributes | Description |
+### `audit_log` 테이블
+상담원의 시스템 내 모든 활동을 추적합니다.
+| 컬럼명 | 타입 | 속성 | 설명 |
 | :--- | :--- | :--- | :--- |
-| `customer_id` | VARCHAR | PK | UUID form |
-| `name` | VARCHAR | | Customer Name |
-| `phone` | VARCHAR | | Phone Number |
+| `id` | BIGINT | PK | 로그 고유 ID |
+| `agent_id` | VARCHAR | | 작업을 수행한 상담원 ID |
+| `action` | VARCHAR | | 작업 종류 (검색, 상세조회) |
+| `target` | VARCHAR | | 대상 식별자 (마스킹 처리) |
+| `timestamp` | DATETIME | | 이벤트 발생 일시 |
+
+---
+
+## 4. 카드 발급사(Issuer) DB (`issuer_db`)
+**포트**: 8081 (H2 Console)
+**용도**: 레거시 카드 발급 및 가입자 데이터 시뮬레이션 (In-Memory)
+
+### `cards` 테이블 / `customers` 테이블
+금융 거래 테스트를 위한 모의 데이터 세트입니다. (상세 생략)

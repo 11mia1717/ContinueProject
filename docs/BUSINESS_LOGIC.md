@@ -1,89 +1,88 @@
-# Business Logic & Workflows
-> 2026.01.30 Current State
+# 비즈니스 로직 및 워크플로우 (Business Logic)
+> 2026.01.30 기준
 
-This document outlines the core business logic and workflows of the Continue Bank ecosystem.
-
----
-
-## 1. Unified Marketing Consent System
-**Goal**: Integrate user marketing preferences across Entrusting Client (Bank) and Trustee (TM Center/SSAP) to enable compliant telemarketing.
-
-### Flow Step-by-Step
-1.  **User Registration (Entrusting Client)**
-    *   User inputs personal info.
-    *   **Terms Agreement**: User explicitly agrees to:
-        *   Essential: Terms of Service, Privacy Policy.
-        *   **Optional**: Marketing Consent, **Third-Party Provision (to TM Center)**.
-    *   System saves `third_party_provision_agreed = true` in `entrusting_db`.
-
-2.  **Data Synchronization (S2S)**
-    *   **Batch/Real-time**: TM Center requests list of consented users via S2S API (`/api/v1/s2s/marketing-consented`).
-    *   **Validation**: Entrusting Client checks `marketing_agreed` AND `third_party_provision_agreed`.
-    *   **Encryption**: Data is transferred encrypted (AES-256) or masked (`Hong*Dong`).
-
-3.  **Outbound Call (TM Center)**
-    *   Agent views "Marketing Target List" (fetched from S2S).
-    *   Agent initiates call. Protocol requires re-confirming identity via SSAP if sensitive actions are needed.
-
-4.  **On-Demand Consent (Starbucks Event)**
-    *   **Trigger**: User clicks the "Starbucks Event" banner on the Dashboard.
-    *   **Logic**:
-        *   Modal requests consent for "Affiliate TM Center Provision".
-        *   On agreement, frontend calls `/api/v1/compliance/marketing-consent`.
-        *   **Backend Sync**: Sets `ssap_provision_agreed = true` for the user.
-        *   **Independence**: This flow is independent of initial registration choices and can be used to "opt-in" post-registration to get specific rewards.
-        *   **Verification**: Status is immediately reflected in "My Page" via `/api/v1/compliance/my-consent`.
-
------
-
-## 2. SSAP Identity Verification (V-PASS)
-**Goal**: Securely verify user identity using a simulated "Virtual Carrier" system without storing PII permanently.
-
-### Flow Step-by-Step
-1.  **Initiation**: User requests verification (e.g., during Sign-up or ID Retrieval).
-2.  **Request Handover**: Entrusting Client sends `name`, `phone` (Encrypted) to SSAP (`Trustee Provider`).
-3.  **OTP Generation**:
-    *   SSAP generates a 6-digit OTP.
-    *   Stores `tokenId`, `otp`, and `expiry` (3 mins) in `trustee_db`.
-    *   Simulates SMS sending.
-4.  **Verification**:
-    *   User enters OTP on Entrusting Client UI.
-    *   Entrusting Client forwards OTP to SSAP.
-    *   SSAP validates OTP and returns `CI` (Connecting Info) and `DI`.
-5.  **Completion**:
-    *   Entrusting Client marks user as `is_verified = true`.
-    *   SSAP deletes auth data (immediately or via TTL job).
+이 문서는 Continue Bank 생태계의 핵심 비즈니스 로직과 시스템 간의 업무 흐름을 정의합니다.
 
 ---
 
-## 3. Call Center Inbound Flow (Stateless)
-**Goal**: Handle inbound customer calls and perform sensitive tasks (e.g., Card Suspension) without storing customer PII in the Call Center DB.
+## 1. 통합 마케팅 동의 시스템 (Unified Marketing Consent)
+**목표**: 위탁사(은행)의 고객 마케팅 선호도를 수탁사(TM 센터)와 연동하여 법규를 준수하는 텔레마케팅 환경을 구축합니다.
 
-### Flow Step-by-Step
-1.  **Customer Call**: Customer calls agent. Agent opens `CallCenter Web`.
-2.  **Member Lookup (S2S)**:
-    *   Agent enters Caller ID (ANI).
-    *   System queries Entrusting Client (`/s2s/members/lookup`).
-    *   **Result**: "Member Found (Hong*Dong)" or "Anonymous".
-3.  **Identity Verification (On-Call)**:
-    *   Agent clicks "Verify Identity".
-    *   System triggers SSAP Auth Request for the customer's phone number.
-    *   Customer receives OTP and reads it to Agent (or inputs via ARS - simulated).
-    *   Agent enters OTP -> Verified.
-4.  **Service Execution**:
-    *   **Mock Scenario**: Lost Card Suspension.
-    *   Call Center sends "Suspend Card" command to **Issuer WAS** (`8081`).
-    *   Issuer WAS updates Card Status in `issuer_db`.
-5.  **Audit**:
-    *   Action is logged in `entrusting_db` (Access Log) and `callcenter_db` (Audit Log).
-    *   Call result (Success/Fail) saved in `callcenter_db` (retention 3 months).
+### 상세 프로세스
+1.  **회원가입 단계 (위탁사)**
+    *   고객이 개인정보를 입력합니다.
+    *   **약관 동의**: 고객은 다음 항목에 대해 명시적으로 동의합니다.
+        *   [필수]: 서비스 이용약관, 개인정보 처리방침
+        *   **[선택]**: 마케팅 정보 수신 동의, **제3자 정보 제공 동의 (TM 센터 위탁용)**
+    *   시스템은 `entrusting_db`에 해당 동의 여부를 저장합니다.
+
+2.  **데이터 동기화 (S2S)**
+    *   **조회**: TM 센터는 S2S API(`/api/v1/s2s/marketing-consented`)를 통해 동의 고객 명단을 요청합니다.
+    *   **검증**: 위탁사 시스템은 `marketing_agreed`와 `third_party_provision_agreed`가 모두 `true`인 사용자만 필터링합니다.
+    *   **보안 전송**: 데이터 전송 시 AES-256 암호화 처리하거나 성명을 마스킹(`홍*동`)하여 전송합니다.
+
+3.  **아웃바운드 콜 수행 (TM 센터)**
+    *   상담원은 S2S로 가져온 "마케팅 대상자 명단"을 확인합니다.
+    *   상담원이 전화를 시도하며, 민감한 업무 처리 시 SSAP를 통한 추가 본인 확인 절차를 거칩니다.
+
+4.  **온디맨드 동의 (스타벅스 이벤트)**
+    *   **트리거**: 고객이 대시보드에서 "스타벅스 이벤트" 배너를 클릭합니다.
+    *   **로직**:
+        *   모달 창을 통해 "제휴 TM 센터 정보 제공" 동의를 요청합니다.
+        *   동의 시, 프론트엔드는 `/api/v1/compliance/marketing-consent` API를 호출합니다.
+        *   **백엔드 동기화**: 해당 사용자의 `ssap_provision_agreed` 필드를 `true`로 업데이트합니다.
+        *   **독립성**: 가입 당시 동의하지 않았더라도, 이벤트를 통해 사후에 "선택적 동의"를 할 수 있는 유연한 구조를 가집니다.
+        *   **확인**: 동의 상태는 '마이페이지'에서 즉시 확인 가능합니다.
 
 ---
 
-## 4. Card Issuance & Management (Issuer)
-**Goal**: Simulate a legacy financial system (Core Banking) that holds the "Source of Truth" for financial products.
+## 2. SSAP 본인인증 (V-PASS)
+**목표**: 가상 통신사 시스템을 활용하여 고객의 신원을 안전하게 확인하며, 개인정보를 영구 저장하지 않는 휘발성 인증을 구현합니다.
 
-### Logic
-*   **Issuance**: When a user opens an account in Entrusting Client, a request is sent to Issuer to create a virtual card.
-*   **Status Check**: Call Center allows agents to view Card Status (Active/Lost) by querying Issuer API.
-*   **Suspension**: Only authorized agents (verified via Token) can hit the `/cards/{id}/suspend` endpoint.
+### 상세 프로세스
+1.  **시작**: 고객이 인증을 요청합니다 (회원가입, 아이디 찾기 등).
+2.  **데이터 전달**: 위탁사는 `이름`, `연락처`(암호화됨)를 SSAP(`Trustee Provider`)로 전달합니다.
+3.  **OTP 생성**:
+    *   SSAP는 6자리 난수 OTP를 생성합니다.
+    *   `token_id`, `otp`, `만료시간`(3분)을 `trustee_db`에 저장합니다.
+    *   SMS 발송 시물레이션을 수행합니다.
+4.  **검증**:
+    *   고객이 위탁사 UI에 OTP 번호를 입력합니다.
+    *   위탁사는 이 번호를 SSAP로 전달하여 검증을 요청합니다.
+    *   SSAP는 OTP가 일치할 경우 연계정보(`CI`)와 중복가입확인정보(`DI`)를 반환합니다.
+5.  **완료**:
+    *   위탁사는 사용자의 상태를 `is_verified = true`로 변경합니다.
+    *   SSAP는 보안을 위해 인증용 데이터를 즉시 삭제하거나 TTL(3분) 후 자동 파기합니다.
+
+---
+
+## 3. 콜센터 인바운드 흐름 (Stateless)
+**목표**: 고객의 전화 문의를 처리할 때, 콜센터 DB에 개인정보를 직접 저장하지 않고 실시간 조회 방식으로 업무를 수행합니다.
+
+### 상세 프로세스
+1.  **전화 접수**: 고객이 콜센터에 전화하면 상담원이 웹 시스템을 엽니다.
+2.  **회원 조회 (S2S)**:
+    *   상담원이 발신번호(ANI) 또는 정보를 입력합니다.
+    *   위탁사 API(`/s2s/members/lookup`)를 통해 실시간으로 조회를 시도합니다.
+    *   **결과**: "정회원(홍*동)" 또는 "비회원" 상태만 확인합니다.
+3.  **본인 확인 (실시간)**:
+    *   상담원이 "본인인증 요청" 버튼을 클릭합니다.
+    *   고객의 휴대폰으로 SSAP 인증 요청이 발송됩니다.
+    *   고객이 OTP를 확인하여 상담원에게 전달하거나 화면에 입력(시뮬레이션)합니다.
+    *   인증 성공 시 상담원 화면에 "인증 완료" 상태가 표시됩니다.
+4.  **서비스 실행 (예: 카드 분실 정지)**:
+    *   상담원은 인증 완료 후 **카드 발행사 WAS**(`8081`)로 "정지 명령"을 보냅니다.
+    *   발행사 시스템은 `issuer_db`의 카드 상태를 업데이트합니다.
+5.  **감사 로그**:
+    *   모든 접근 행위는 위탁사의 `access_log`와 콜센터의 `audit_log`에 동시 기록됩니다.
+    *   상담 결과만 `callcenter_db`에 보관됩니다 (3개월 후 삭제).
+
+---
+
+## 4. 카드 발급 및 관리 (Issuer)
+**목표**: 금융 상품의 "원본 데이터(Source of Truth)"를 보유한 레거시 금융 시스템을 시뮬레이션합니다.
+
+### 주요 로직
+*   **발급**: 위탁사에서 계좌를 개설하면 발행사 시스템에 가상 카드 생성이 요청됩니다.
+*   **상태 조회**: 콜센터 상담원은 발행사 API를 통해 카드의 현재 상태(정상, 분실, 정지)를 조회할 수 있습니다.
+*   **통제**: 인가된 상담원(토큰 보유자)만이 정지(`/cards/{id}/suspend`) API를 호출할 수 있도록 통제됩니다.
