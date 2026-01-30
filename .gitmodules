@@ -1,0 +1,8 @@
+[submodule "homepage-project"]
+	path = homepage-project
+	url = https://github.com/11mia1717/homepage-project.git
+	branch = dev
+[submodule "call-center-project"]
+	path = call-center-project
+	url = https://github.com/11mia1717/call-center-project.git
+	branch = dev
