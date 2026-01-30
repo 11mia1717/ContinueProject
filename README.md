@@ -64,7 +64,7 @@ Continue Bank의 통합 금융 플랫폼 프로젝트입니다.
 *   [시스템 포트 명세 가이드](./system_port_specification.md)
 *   [데이터베이스 설계 명세 (ERD 상세)](./docs/DB_SCHEMA.md)
 *   [개인정보 처리 상세 흐름도](./docs/PRIVACY_FLOW_2026.md)
-*   [인증 토큰(JWT) 및 데이터 통신 흐름](./docs/AUTH_PRIVACY_GUIDE.md)
+*   [인증 토큰 및 데이터 통신 흐름](./docs/AUTH_PRIVACY_GUIDE.md)
 *   [비즈니스 로직 및 워크플로우 명세](./docs/BUSINESS_LOGIC.md)
 *   [홈페이지 프로젝트 상세 기술 문서](./homepage-project/README.md)
 *   [콜센터 프로젝트 상세 기술 문서](./call-center-project/README.md)
